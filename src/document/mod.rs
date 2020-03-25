@@ -11,10 +11,11 @@
 //!
 use html5ever::driver::ParseOpts;
 use html5ever::parse_document;
+use html5ever::serialize;
 use html5ever::tendril::TendrilSink;
 use html5ever::tree_builder::TreeBuilderOpts;
 use markup5ever::{Attribute, QualName};
-use markup5ever_arcdom::{ArcDom, Handle, NodeData};
+use markup5ever_arcdom::{ArcDom, Handle, NodeData, SerializableHandle};
 use std::cell::Ref;
 use std::collections::HashMap;
 use std::default::Default;
@@ -482,6 +483,74 @@ impl Element {
     pub fn select(&self, selector: &str) -> Vec<Element> {
         let sel = Selector::from(selector);
         sel.find(self.handle.children.borrow())
+    }
+
+    /// Get raw HTML
+    ///
+    /// # Example
+    /// ```
+    /// use crabquery::Document;
+    ///
+    /// let doc = Document::from(r#"<a class="link">hi there</a>"#);
+    /// let sel = doc.select("a");
+    /// let el = sel.first().unwrap();
+    ///
+    /// assert_eq!(el.html().unwrap(), r#"<a class="link">hi there</a>"#);
+    /// ```
+    pub fn html(&self) -> Option<String> {
+        if let Some(parent) = self.handle.parent.take() {
+            let wrapper = parent.upgrade();
+
+            self.handle.parent.set(Some(parent));
+
+            if let Some(wrapper) = wrapper {
+                let mut buf = Vec::new();
+
+                let ser = serialize::serialize(
+                    &mut buf,
+                    &SerializableHandle::from(wrapper),
+                    Default::default(),
+                );
+
+                if ser.is_err() {
+                    None
+                } else {
+                    String::from_utf8(buf).ok()
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+
+    /// Get raw inner HTML
+    ///
+    /// # Example
+    /// ```
+    /// use crabquery::Document;
+    ///
+    /// let doc = Document::from("<a class='link'><span>hi</span> <b>there</b></a>");
+    /// let sel = doc.select("a");
+    /// let el = sel.first().unwrap();
+    ///
+    /// assert_eq!(el.inner_html().unwrap(), "<span>hi</span> <b>there</b>");
+    /// ```
+    pub fn inner_html(&self) -> Option<String> {
+        let mut buf = Vec::new();
+
+        let ser = serialize::serialize(
+            &mut buf,
+            &SerializableHandle::from(self.handle.clone()),
+            Default::default(),
+        );
+
+        if ser.is_err() {
+            None
+        } else {
+            String::from_utf8(buf).ok()
+        }
     }
 } //}}}
 
